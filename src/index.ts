@@ -4,6 +4,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { AppDataSource } from './config/database';
 import authRoutes from './routes/auth';
+import userRoutes from './routes/users';
 
 dotenv.config();
 
@@ -16,6 +17,7 @@ app.use(express.json());
 
 // Routes
 app.use('/auth', authRoutes);
+app.use('/users', userRoutes);
 
 // Database connection
 AppDataSource.initialize().then(() => {
