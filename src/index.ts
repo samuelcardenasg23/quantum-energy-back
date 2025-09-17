@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import { AppDataSource } from './config/database';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
+import offerRoutes from './routes/offers';
 
 dotenv.config();
 
@@ -18,6 +19,7 @@ app.use(express.json());
 // Routes
 app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
+app.use('/offers', offerRoutes);
 
 // Database connection
 AppDataSource.initialize().then(() => {
