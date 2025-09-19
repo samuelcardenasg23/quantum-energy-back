@@ -8,6 +8,7 @@ import userRoutes from './routes/users';
 import offerRoutes from './routes/offers';
 import orderRoutes from './routes/orders';
 import productionRoutes from './routes/productions';
+import priceRoutes from './routes/prices';
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ app.use('/users', userRoutes);
 app.use('/offers', offerRoutes);
 app.use('/orders', orderRoutes);
 app.use('/productions', productionRoutes);
+app.use('/prices', priceRoutes);
 
 // Database connection
 AppDataSource.initialize().then(() => {
