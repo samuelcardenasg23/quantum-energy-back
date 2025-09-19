@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { AppDataSource } from '../config/database';
 import { Order } from '../entities/Order';
 import { EnergyOffer } from '../entities/EnergyOffer';
+import { EnergyProductionConsumption } from '../entities/EnergyProductionConsumption';
 import { AuthRequest } from '../middleware/auth';
 import { IsNull } from 'typeorm';
 
@@ -87,6 +88,26 @@ export class OrderController {
         offer.offer_status = 'unavailable';
       }
       await offerRepository.save(offer);
+
+      // Update production used and consumed
+      const productionRepository = queryRunner.manager.getRepository(EnergyProductionConsumption);
+      const productions = await productionRepository.find({
+        where: { user: { id: offer.user.id }, deleted_at: IsNull() },
+      });
+      let remainingUsed = quantity_kwh;
+      for (const prod of productions) {
+        if (remainingUsed > 0 && parseFloat(prod.used_kwh.toString()) > 0) {
+          const toDecrease = Math.min(remainingUsed, parseFloat(prod.used_kwh.toString()));
+          prod.used_kwh = parseFloat(prod.used_kwh.toString()) - toDecrease;
+          remainingUsed -= toDecrease;
+        }
+        if (remainingUsed <= 0) break;
+      }
+      // Increase consumed_kwh in the first production
+      if (productions.length > 0) {
+        productions[0].consumed_kwh = parseFloat(productions[0].consumed_kwh.toString()) + quantity_kwh;
+      }
+      await productionRepository.save(productions);
 
       await queryRunner.commitTransaction();
       res.status(201).json({ data: order });

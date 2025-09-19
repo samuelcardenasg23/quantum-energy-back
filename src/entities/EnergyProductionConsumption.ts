@@ -16,6 +16,12 @@ export class EnergyProductionConsumption {
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   energy_consumed_kwh!: number;
 
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  used_kwh!: number;
+
+  @Column({ type: 'decimal', precision: 10, scale: 2, default: 0 })
+  consumed_kwh!: number;
+
   @CreateDateColumn()
   created_at!: Date;
 
