@@ -1,5 +1,5 @@
-import "reflect-metadata"; // Required for TypeORM
 import "dotenv/config";
+import "reflect-metadata"; // Required for TypeORM
 import app from "./app";
 import { createLogger } from "./config/logger";
 import { AppDataSource } from "./config/database";
