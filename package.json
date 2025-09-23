@@ -20,7 +20,7 @@
     "url": "https://github.com/samuelcardenasg23/quantum-energy-back/issues"
   },
   "homepage": "https://github.com/samuelcardenasg23/quantum-energy-back#readme",
-  "dependencies": {
+  "dependencies": { 
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
