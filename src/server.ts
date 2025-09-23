@@ -6,7 +6,7 @@ import { AppDataSource } from "./config/database";
 
 const logger = createLogger('Server');
 const port = process.env.PORT || 3000;
-const baseUrl = process.env.BASE_URL || "localhost";
+const baseUrl = process.env.BASE_URL || "0.0.0.0";
 
 // Initialize database connection first
 AppDataSource.initialize()
