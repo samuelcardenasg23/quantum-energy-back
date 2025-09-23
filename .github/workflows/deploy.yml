@@ -1,0 +1,69 @@
+name: CI/CD Backend → ECR + ECS
+
+on:
+  push:
+    branches: [ "main" ]     # ajusta si usas otra rama
+  workflow_dispatch: {}
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REPO: ${{ vars.ECR_REPO }}
+  CLUSTER: ${{ vars.CLUSTER }}
+  SERVICE: ${{ vars.SERVICE }}
+
+jobs:
+  build-and-deploy:
+    permissions:
+      id-token: write
+      contents: read
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS creds (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+        
+      - name: Compute image tags
+        id: tags
+        run: |
+          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          DATE_TAG=$(date -u +%Y%m%d%H%M)
+          echo "TAG_SHA=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "TAG_DATE=${DATE_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Build Docker image (latest + date + sha)
+        run: |
+          docker build -t $ECR_REPO:${{ steps.tags.outputs.TAG_SHA }} \
+                       -t $ECR_REPO:${{ steps.tags.outputs.TAG_DATE }} \
+                       -t $ECR_REPO:latest .
+
+          docker tag $ECR_REPO:${{ steps.tags.outputs.TAG_SHA }} \
+            ${{ steps.ecr.outputs.registry }}/${ECR_REPO}:${{ steps.tags.outputs.TAG_SHA }}
+
+          docker tag $ECR_REPO:${{ steps.tags.outputs.TAG_DATE }} \
+            ${{ steps.ecr.outputs.registry }}/${ECR_REPO}:${{ steps.tags.outputs.TAG_DATE }}
+
+          docker tag $ECR_REPO:latest \
+            ${{ steps.ecr.outputs.registry }}/${ECR_REPO}:latest
+
+      - name: Push to ECR
+        run: |
+          docker push ${{ steps.ecr.outputs.registry }}/${ECR_REPO}:${{ steps.tags.outputs.TAG_SHA }}
+          docker push ${{ steps.ecr.outputs.registry }}/${ECR_REPO}:${{ steps.tags.outputs.TAG_DATE }}
+          docker push ${{ steps.ecr.outputs.registry }}/${ECR_REPO}:latest
+
+      - name: Force new ECS deployment
+        run: |
+          aws ecs update-service \
+            --cluster "$CLUSTER" \
+            --service "$SERVICE" \
+            --force-new-deployment
