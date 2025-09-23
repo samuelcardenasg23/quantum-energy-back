@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { createLogger } from '../config/logger';
 import { getCorrelationId } from './correlationId';
+import { metrics } from '../utils/metrics';
 
 const logger = createLogger('RequestLogger');
 
@@ -31,11 +32,24 @@ export const requestLoggerMiddleware = (req: Request, res: Response, next: NextF
     ...requestInfo
   });
 
+  // Increment request counter immediately
+  metrics.incrementCounter('http_requests_total');
+  metrics.incrementCounter('http_requests_total', 1, { method: req.method });
+
   // Override res.end to capture response information
   const originalEnd = res.end;
-  res.end = function(chunk?: any, encoding?: any) {
+  res.end = function(chunk?: any, encoding?: any): any {
     const responseTime = Date.now() - startTime;
     const statusCode = res.statusCode;
+    
+    // Record metrics
+    metrics.recordHistogram('http_request_duration', responseTime);
+    metrics.incrementCounter('http_requests_total', 1, { status: statusCode.toString() });
+    
+    // Track errors
+    if (statusCode >= 400) {
+      metrics.incrementCounter('http_errors_total');
+    }
     
     // Determine log level based on status code
     const logLevel = getLogLevelForStatus(statusCode);
@@ -107,7 +121,7 @@ export const slowRequestMiddleware = (thresholdMs: number = 1000) => {
     
     // Override res.end to check response time
     const originalEnd = res.end;
-    res.end = function(chunk?: any, encoding?: any) {
+    res.end = function(chunk?: any, encoding?: any): any {
       const responseTime = Date.now() - startTime;
       
       // Log if request took longer than threshold

@@ -5,6 +5,9 @@ import { EnergyOffer } from '../entities/EnergyOffer';
 import { EnergyProductionConsumption } from '../entities/EnergyProductionConsumption';
 import { AuthRequest } from '../middleware/auth';
 import { IsNull } from 'typeorm';
+import { createLogger } from '../config/logger';
+import { getCorrelationId } from '../middleware/correlationId';
+import { metrics } from '../utils/metrics';
 
 export class OrderController {
   static async getOrders(req: AuthRequest, res: Response) {
@@ -52,12 +55,22 @@ export class OrderController {
   }
 
   static async createOrder(req: AuthRequest, res: Response) {
+    const logger = createLogger('OrderController');
+    const correlationId = getCorrelationId(req);
     const queryRunner = AppDataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
       const { offer_id, quantity_kwh } = req.body;
+      
+      logger.info('Order creation attempt', {
+        correlationId,
+        userId: req.user!.id,
+        offer_id,
+        quantity_kwh
+      });
+      
       const orderRepository = queryRunner.manager.getRepository(Order);
       const offerRepository = queryRunner.manager.getRepository(EnergyOffer);
 
@@ -66,10 +79,64 @@ export class OrderController {
         relations: ['user'],
       });
 
-      if (!offer) return res.status(404).json({ message: 'Offer not found' });
-      if (offer.user.id === req.user!.id) return res.status(400).json({ message: 'Cannot purchase your own offer' });
-      if (offer.offer_status !== 'available') return res.status(400).json({ message: 'Offer not available' });
-      if (offer.current_amount_kwh < quantity_kwh) return res.status(400).json({ message: 'Insufficient quantity available' });
+      if (!offer) {
+        await queryRunner.rollbackTransaction();
+        metrics.incrementCounter('orders_creation_failed');
+        metrics.incrementCounter('orders_creation_failed', 1, { reason: 'offer_not_found' });
+        
+        logger.warn('Order creation failed - offer not found', {
+          correlationId,
+          userId: req.user!.id,
+          offer_id
+        });
+        
+        return res.status(404).json({ message: 'Offer not found' });
+      }
+      
+      if (offer.user.id === req.user!.id) {
+        await queryRunner.rollbackTransaction();
+        metrics.incrementCounter('orders_creation_failed');
+        metrics.incrementCounter('orders_creation_failed', 1, { reason: 'own_offer' });
+        
+        logger.warn('Order creation failed - user trying to buy own offer', {
+          correlationId,
+          userId: req.user!.id,
+          offer_id
+        });
+        
+        return res.status(400).json({ message: 'Cannot purchase your own offer' });
+      }
+      
+      if (offer.offer_status !== 'available') {
+        await queryRunner.rollbackTransaction();
+        metrics.incrementCounter('orders_creation_failed');
+        metrics.incrementCounter('orders_creation_failed', 1, { reason: 'offer_unavailable' });
+        
+        logger.warn('Order creation failed - offer not available', {
+          correlationId,
+          userId: req.user!.id,
+          offer_id,
+          offer_status: offer.offer_status
+        });
+        
+        return res.status(400).json({ message: 'Offer not available' });
+      }
+      
+      if (offer.current_amount_kwh < quantity_kwh) {
+        await queryRunner.rollbackTransaction();
+        metrics.incrementCounter('orders_creation_failed');
+        metrics.incrementCounter('orders_creation_failed', 1, { reason: 'insufficient_quantity' });
+        
+        logger.warn('Order creation failed - insufficient quantity', {
+          correlationId,
+          userId: req.user!.id,
+          offer_id,
+          requested: quantity_kwh,
+          available: offer.current_amount_kwh
+        });
+        
+        return res.status(400).json({ message: 'Insufficient quantity available' });
+      }
 
       const total_price = quantity_kwh * offer.price_kwh;
 
@@ -110,9 +177,46 @@ export class OrderController {
       await productionRepository.save(productions);
 
       await queryRunner.commitTransaction();
+      
+      // Record successful order creation with business metrics
+      metrics.incrementCounter('orders_created');
+      metrics.incrementCounter('orders_created', 1, { buyer_role: req.user!.user_role });
+      metrics.incrementCounter('orders_created', 1, { seller_role: offer.user.user_role });
+      metrics.recordHistogram('order_energy_quantity_kwh', quantity_kwh);
+      metrics.recordHistogram('order_total_price', total_price);
+      metrics.recordHistogram('order_price_per_kwh', offer.price_kwh);
+      
+      // Mark offer as sold/accepted for metrics
+      metrics.incrementCounter('offers_accepted');
+      metrics.incrementCounter('offers_accepted', 1, { seller_role: offer.user.user_role });
+      
+      logger.info('Order created successfully', {
+        correlationId,
+        orderId: order.id,
+        buyerId: req.user!.id,
+        sellerId: offer.user.id,
+        offer_id,
+        quantity_kwh,
+        total_price,
+        price_per_kwh: offer.price_kwh
+      });
+      
       res.status(201).json({ data: order });
-    } catch (error) {
+    } catch (error: any) {
       await queryRunner.rollbackTransaction();
+      
+      // Record error metrics
+      metrics.incrementCounter('orders_creation_failed');
+      metrics.incrementCounter('orders_creation_failed', 1, { reason: 'server_error' });
+      
+      logger.error('Order creation error', {
+        correlationId,
+        userId: req.user?.id,
+        offer_id: req.body.offer_id,
+        error: error.message,
+        stack: error.stack
+      });
+      
       res.status(500).json({ message: 'Server error' });
     } finally {
       await queryRunner.release();

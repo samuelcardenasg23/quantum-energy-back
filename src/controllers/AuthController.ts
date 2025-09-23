@@ -6,6 +6,7 @@ import { User } from '../entities/User';
 import { AuthRequest } from '../middleware/auth';
 import { createLogger } from '../config/logger';
 import { getCorrelationId } from '../middleware/correlationId';
+import { metrics } from '../utils/metrics';
 
 export class AuthController {
   static async register(req: Request, res: Response) {
@@ -43,6 +44,10 @@ export class AuthController {
 
       await userRepository.save(user);
       
+      // Record business metrics
+      metrics.incrementCounter('auth_registrations');
+      metrics.incrementCounter('auth_registrations', 1, { role: user_role });
+      
       logger.info('User registered successfully', {
         correlationId,
         userId: user.id,
@@ -73,10 +78,17 @@ export class AuthController {
         email
       });
       
+      // Record login attempt metric
+      metrics.incrementCounter('auth_login_attempts');
+      
       const userRepository = AppDataSource.getRepository(User);
 
       const user = await userRepository.findOneBy({ email });
       if (!user) {
+        // Record failed login
+        metrics.incrementCounter('auth_login_failures');
+        metrics.incrementCounter('auth_login_failures', 1, { reason: 'user_not_found' });
+        
         logger.warn('Login failed - user not found', {
           correlationId,
           email
@@ -86,6 +98,10 @@ export class AuthController {
 
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) {
+        // Record failed login
+        metrics.incrementCounter('auth_login_failures');
+        metrics.incrementCounter('auth_login_failures', 1, { reason: 'invalid_password' });
+        
         logger.warn('Login failed - invalid password', {
           correlationId,
           email,
@@ -95,6 +111,10 @@ export class AuthController {
       }
 
       const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET!, { expiresIn: '1h' });
+      
+      // Record successful login
+      metrics.incrementCounter('auth_login_success');
+      metrics.incrementCounter('auth_login_success', 1, { role: user.user_role });
       
       logger.info('Login successful', {
         correlationId,
