@@ -4,6 +4,9 @@ import { EnergyOffer } from '../entities/EnergyOffer';
 import { EnergyProductionConsumption } from '../entities/EnergyProductionConsumption';
 import { AuthRequest } from '../middleware/auth';
 import { IsNull } from 'typeorm';
+import { createLogger } from '../config/logger';
+import { getCorrelationId } from '../middleware/correlationId';
+import { metrics } from '../utils/metrics';
 
 export class OfferController {
   static async getOffers(req: AuthRequest, res: Response) {
@@ -55,8 +58,19 @@ export class OfferController {
   }
 
   static async createOffer(req: AuthRequest, res: Response) {
+    const logger = createLogger('OfferController');
+    const correlationId = getCorrelationId(req);
+    
     try {
       const { total_amount_kwh, current_amount_kwh, price_kwh } = req.body;
+      
+      logger.info('Offer creation attempt', {
+        correlationId,
+        userId: req.user!.id,
+        total_amount_kwh,
+        price_kwh
+      });
+      
       const offerRepository = AppDataSource.getRepository(EnergyOffer);
       const productionRepository = AppDataSource.getRepository(EnergyProductionConsumption);
 
@@ -72,6 +86,17 @@ export class OfferController {
       const availableExcedente = netProduction - usedExcedente - consumedExcedente;
 
       if (total_amount_kwh > availableExcedente) {
+        // Record failed offer creation
+        metrics.incrementCounter('offers_creation_failed');
+        metrics.incrementCounter('offers_creation_failed', 1, { reason: 'insufficient_energy' });
+        
+        logger.warn('Offer creation failed - insufficient energy', {
+          correlationId,
+          userId: req.user!.id,
+          requested: total_amount_kwh,
+          available: availableExcedente
+        });
+        
         return res.status(400).json({ message: 'Insufficient available excedente' });
       }
 
@@ -88,6 +113,16 @@ export class OfferController {
         if (remaining <= 0) break;
       }
       if (remaining > 0) {
+        // Record failed offer creation
+        metrics.incrementCounter('offers_creation_failed');
+        metrics.incrementCounter('offers_creation_failed', 1, { reason: 'allocation_error' });
+        
+        logger.error('Offer creation failed - allocation error', {
+          correlationId,
+          userId: req.user!.id,
+          remaining_energy: remaining
+        });
+        
         return res.status(400).json({ message: 'Could not allocate all energy to productions' });
       }
       await productionRepository.save(productions);
@@ -100,8 +135,35 @@ export class OfferController {
       });
 
       await offerRepository.save(offer);
+      
+      // Record successful offer creation with business metrics
+      metrics.incrementCounter('offers_created');
+      metrics.incrementCounter('offers_created', 1, { user_role: req.user!.user_role });
+      metrics.recordHistogram('offer_energy_amount_kwh', total_amount_kwh);
+      metrics.recordHistogram('offer_price_per_kwh', price_kwh);
+      
+      logger.info('Offer created successfully', {
+        correlationId,
+        offerId: offer.id,
+        userId: req.user!.id,
+        total_amount_kwh,
+        price_kwh,
+        total_value: total_amount_kwh * price_kwh
+      });
+      
       res.status(201).json({ data: offer });
-    } catch (error) {
+    } catch (error: any) {
+      // Record error metrics
+      metrics.incrementCounter('offers_creation_failed');
+      metrics.incrementCounter('offers_creation_failed', 1, { reason: 'server_error' });
+      
+      logger.error('Offer creation error', {
+        correlationId,
+        userId: req.user?.id,
+        error: error.message,
+        stack: error.stack
+      });
+      
       res.status(500).json({ message: 'Server error' });
     }
   }
