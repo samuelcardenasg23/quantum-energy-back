@@ -35,6 +35,23 @@ app.use(slowRequestMiddleware(1000)); // 1 second threshold
 // 4. Body parsing
 app.use(express.json());
 
+// JSON parse error → 400
+app.use((err: any, req: any, res: any, next: any) => {
+  if (err instanceof SyntaxError && 'body' in err) {
+    return res.status(400).json({
+      error: 'Invalid JSON payload',
+      correlationId: req.headers['x-correlation-id'] || undefined
+    });
+  }
+  next(err);
+});
+
+app.use(express.json({
+  strict: true,          // solo objetos/arrays JSON
+  limit: '1mb',          // ajusta si necesitas más
+  type: ['application/json', 'application/*+json']
+}));
+
 // Documentación y especificación 
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.get("/openapi.json", (_req, res) => res.json(swaggerSpec));
