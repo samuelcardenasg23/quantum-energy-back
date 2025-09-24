@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from "express";
+import cors from "cors";
 import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "./swagger";
 import authRouter from "./routes/auth";
@@ -32,7 +33,13 @@ app.use(requestLoggerMiddleware);
 // 3. Slow request monitoring (log requests that take too long)
 app.use(slowRequestMiddleware(1000)); // 1 second threshold
 
-// 4. Body parsing
+// 4. CORS configuration
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true
+}));
+
+// 5. Body parsing
 app.use(express.json());
 
 // JSON parse error → 400
