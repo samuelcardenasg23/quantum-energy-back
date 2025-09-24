@@ -3,9 +3,11 @@ import { DataSource } from 'typeorm';
 import path from 'path';
 import dotenv from 'dotenv';
 import { createLogger } from './logger';
+import fs from 'fs'; //TODO: para debug
 
 dotenv.config();
 
+console.log('VALOR __dirname:', __dirname);
 const logger = createLogger('Database');
 
 const url = process.env.DATABASE_URL;
@@ -21,18 +23,25 @@ const rejectUnauthorized = process.env.DB_SSL_REJECT === 'false' ? false : true;
 // Globs robustos para entities y migrations
 const entitiesPath = isProd
   ? [
-      path.join(__dirname, '**/*.entity.js'),
-      path.join(__dirname, 'entities/*.js'),
-      path.join(__dirname, '*.entity.js')
-    ]
+    path.join(__dirname, '**/*.entity.js'),
+    path.join(__dirname, 'entities/*.js'),
+    path.join(__dirname, '*.entity.js')
+  ]
   : [
-      path.join(__dirname, 'entities/*.ts'),
-      path.join(__dirname, '**/*.entity.ts')
-    ];
+    path.join(__dirname, 'entities/*.ts'),
+    path.join(__dirname, '**/*.entity.ts')
+  ];
 
 const migrationsPath = isProd
   ? [path.join(__dirname, 'migrations/*.js')]
   : [path.join(__dirname, 'migrations/*.ts')];
+
+//TODO: para debug
+try {
+  console.log('Archivos en dist/entities:', fs.readdirSync('/app/dist/entities'));
+} catch (e) {
+  console.error('No se pudo leer /app/dist/entities:', e.message);
+}
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
