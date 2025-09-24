@@ -40,7 +40,7 @@ const migrationsPath = isProd
 try {
   console.log('Archivos en dist/entities:', fs.readdirSync('/app/dist/entities'));
 } catch (e) {
-  console.error('No se pudo leer /app/dist/entities:', e.message);
+  console.error('No se pudo leer /app/dist/entities:', e);
 }
 
 export const AppDataSource = new DataSource({
