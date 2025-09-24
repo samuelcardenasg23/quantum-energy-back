@@ -6,73 +6,25 @@ dotenv.config();
 
 const logger = createLogger('Database');
 
+// Prefer a single DATABASE_URL for simpler and more secure deployments.
+const url = process.env.DATABASE_URL;
+if (!url) {
+  logger.error('DATABASE_URL is not set');
+  throw new Error('DATABASE_URL is not set');
+}
+
+// SSL helper: enable when DB_SSL=true. You can control rejectUnauthorized via DB_SSL_REJECT.
+const useSsl = process.env.DB_SSL === 'true';
+const rejectUnauthorized = process.env.DB_SSL_REJECT === 'false' ? false : true;
+
 export const AppDataSource = new DataSource({
   type: 'postgres',
-  host: process.env.DB_HOST || process.env.DATABASE_URL,
-  port: parseInt(process.env.DB_PORT || '5432'),
-  username: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  synchronize: false, // se maneja con scripts
-  logging: process.env.NODE_ENV === 'development', // Logs solo en dev
-  entities: ['src/entities/*.ts'], // para queries
-  
-  // Add custom logger for database operations
-  logger: {
-    logQuery: (query: string, parameters?: any[]) => {
-      const startTime = Date.now();
-      
-      // Log query for debugging (only in development)
-      if (process.env.NODE_ENV === 'development') {
-        logger.debug('Database query executed', {
-          type: 'db_query',
-          query: query.replace(/\s+/g, ' ').trim(),
-          parameters: parameters?.slice(0, 5) // Limit parameters logged
-        });
-      }
-      
-      // We'll track timing in the actual query execution
-      return startTime;
-    },
-    
-    logQueryError: (error: string, query: string, parameters?: any[]) => {
-      logger.error('Database query error', {
-        type: 'db_error',
-        error,
-        query: query.replace(/\s+/g, ' ').trim(),
-        parameters: parameters?.slice(0, 5)
-      });
-    },
-    
-    logQuerySlow: (time: number, query: string, parameters?: any[]) => {
-      logger.warn('Slow database query detected', {
-        type: 'db_slow_query',
-        duration_ms: time,
-        query: query.replace(/\s+/g, ' ').trim(),
-        parameters: parameters?.slice(0, 5)
-      });
-    },
-    
-    logSchemaBuild: (message: string) => {
-      logger.info('Database schema operation', {
-        type: 'db_schema',
-        message
-      });
-    },
-    
-    logMigration: (message: string) => {
-      logger.info('Database migration', {
-        type: 'db_migration',
-        message
-      });
-    },
-    
-    log: (level: 'log' | 'info' | 'warn', message: any) => {
-      const logLevel = level === 'log' ? 'info' : level;
-      logger[logLevel]('Database operation', {
-        type: 'db_operation',
-        message
-      });
-    }
-  }
+  url,
+  // If you want to force TLS you can enable it via env var. TypeORM accepts `extra` for driver options.
+  ...(useSsl ? { extra: { ssl: { rejectUnauthorized } } } : {}),
+  synchronize: false, // managed via migrations
+  logging: process.env.NODE_ENV === 'development',
+  // Use compiled JS paths in production, TS paths in development (useful for ts-node)
+  entities: process.env.NODE_ENV === 'production' ? ['dist/**/*.entity.js'] : ['src/entities/*.ts'],
+  migrations: process.env.NODE_ENV === 'production' ? ['dist/migrations/*.js'] : ['src/migrations/*.ts']
 });
