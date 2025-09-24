@@ -20,11 +20,18 @@ const rejectUnauthorized = process.env.DB_SSL_REJECT === 'false' ? false : true;
 export const AppDataSource = new DataSource({
   type: 'postgres',
   url,
-  // If you want to force TLS you can enable it via env var. TypeORM accepts `extra` for driver options.
-  ...(useSsl ? { extra: { ssl: { rejectUnauthorized } } } : {}),
+  // Enable SSL only when DB_SSL=true. By default rejectUnauthorized is true for strict TLS.
+  ...(useSsl ? { ssl: { rejectUnauthorized } } : {}),
   synchronize: false, // managed via migrations
   logging: process.env.NODE_ENV === 'development',
   // Use compiled JS paths in production, TS paths in development (useful for ts-node)
   entities: process.env.NODE_ENV === 'production' ? ['dist/**/*.entity.js'] : ['src/entities/*.ts'],
   migrations: process.env.NODE_ENV === 'production' ? ['dist/migrations/*.js'] : ['src/migrations/*.ts']
+});
+
+logger.info('Database configuration', {
+  type: 'db_config',
+  databaseUrlPresent: !!url,
+  sslEnabled: useSsl,
+  sslRejectUnauthorized: useSsl ? rejectUnauthorized : undefined
 });
