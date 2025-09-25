@@ -24,17 +24,18 @@ const rejectUnauthorized = process.env.DB_SSL_REJECT === 'false' ? false : true;
 const entitiesPath = isProd
   ? [
     path.join(__dirname, '**/*.entity.js'),
-    path.join(__dirname, 'entities/*.js'),
+    path.join(__dirname, '../entities/*.js'),
     path.join(__dirname, '*.entity.js')
   ]
   : [
     path.join(__dirname, 'entities/*.ts'),
+    path.join(__dirname, '../entities/*.ts'),
     path.join(__dirname, '**/*.entity.ts')
   ];
 
 const migrationsPath = isProd
-  ? [path.join(__dirname, 'migrations/*.js')]
-  : [path.join(__dirname, 'migrations/*.ts')];
+  ? [path.join(__dirname, '../migrations/*.js')] 
+  : [path.join(__dirname, '../migrations/*.ts')];
 
 //TODO: para debug
 try {
