@@ -21,7 +21,7 @@ async function main() {
       host: process.env.DB_HOST
     });
 
-    // Run migrations
+    // Run migrations new
     await AppDataSource.runMigrations();
     logger.info('Database migrations executed successfully', {
       type: 'database_migrations'
