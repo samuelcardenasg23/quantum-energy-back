@@ -21,6 +21,12 @@ async function main() {
       host: process.env.DB_HOST
     });
 
+    // Run migrations
+    await AppDataSource.runMigrations();
+    logger.info('Database migrations executed successfully', {
+      type: 'database_migrations'
+    });
+
     app.listen(port, () => {
       logger.info('Server started successfully', {
         type: 'server_start',
