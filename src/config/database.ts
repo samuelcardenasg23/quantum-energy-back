@@ -5,6 +5,13 @@ import dotenv from 'dotenv';
 import { createLogger } from './logger';
 import fs from 'fs'; //TODO: para debug
 
+// Import all entities explicitly for production reliability
+import { User } from '../entities/User';
+import { EnergyOffer } from '../entities/EnergyOffer';
+import { EnergyPricePerHour } from '../entities/EnergyPricePerHour';
+import { EnergyProductionConsumption } from '../entities/EnergyProductionConsumption';
+import { Order } from '../entities/Order';
+
 dotenv.config();
 
 console.log('VALOR __dirname:', __dirname);
@@ -48,7 +55,7 @@ export const AppDataSource = new DataSource({
   type: 'postgres',
   url,
   ...(useSsl ? { ssl: { rejectUnauthorized } } : {}),
-  entities: entitiesPath,
+  entities: [User, EnergyOffer, EnergyPricePerHour, EnergyProductionConsumption, Order],
   migrations: migrationsPath,
   synchronize: false, // usa migraciones
   logging: process.env.NODE_ENV === 'development',
